@@ -26,6 +26,10 @@ defmodule MatrixGame do
               |> String.trim()
               |> String.to_integer()
 
+    if(rows > 9 || columns > 9) do
+      IO.puts("Max 9 rows and max 9 columns")
+      start()
+    end
     game_field = generate_game_field(rows, columns)
     print_game_field(game_field)
     current_player = which_players_turn?("none")
@@ -50,7 +54,7 @@ defmodule MatrixGame do
         end
       )
     if(game_over?(new_game_field)) do
-      IO.puts("Game over! #{current_player} took the last element and lost!")
+      IO.puts("Game over! #{which_players_turn?(current_player)} WON!!! \n#{current_player} took the last element and therefore lost!")
     else
       print_game_field(new_game_field)
       next_player = which_players_turn?(current_player)
