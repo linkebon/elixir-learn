@@ -96,7 +96,6 @@ defmodule Game_Logic do
 
 end
 
-# https://elixir-lang.org/getting-started/mix-otp/task-and-gen-tcp.html
 defmodule Server do
   require Logger
 
