@@ -119,17 +119,27 @@ end
 defmodule Server do
   require Logger
 
-  def initiate_game(socket_p1) do
-    write_line("Rows[Max 9]: ", socket_p1)
-    rows = read_int_from_client(socket_p1)
-    write_line("Columns[Max 9]: ", socket_p1)
-    columns = read_int_from_client(socket_p1)
-    game_field = Game_Logic.generate_game_field(rows, columns)
+  def accept(port) do
+    {:ok, socket} =
+      :gen_tcp.listen(port, [:binary, packet: :line, active: false, reuseaddr: true])
+    Logger.info("Accepting connections on port #{port}")
+    loop_acceptor(socket)
+  end
+
+  defp loop_acceptor(socket) do
+    {:ok, client1} = :gen_tcp.accept(socket)
+    {:ok, client2} = :gen_tcp.accept(socket)
+    initiate_game(client1, client2)
+  end
+
+  defp initiate_game(socket_p1, socket_p2) do
+    write_to_clients("Welcome to Matrix game!", socket_p1, socket_p2)
+    game_field = Game_Logic.generate_game_field(9, 9)
     write_line(Game_Logic.game_field_as_string(game_field), socket_p1)
     new_turn(game_field, socket_p1)
   end
 
-  def new_turn(game_field, socket_p1, player \\ "none") do
+  defp new_turn(game_field, socket_p1, player \\ "none") do
     current_player = case player do
       "none" -> Game_Logic.which_players_turn?(player)
       _ -> player
@@ -143,7 +153,12 @@ defmodule Server do
     game_over?(new_game_field, current_player, socket_p1)
   end
 
-  def game_over?(game_field, current_player, socket_p1) do
+  defp which_players_turn?(current_player) do
+    #todo
+    current_player
+  end
+
+  defp game_over?(game_field, current_player, socket_p1) do
     if(Game_Logic.game_over?(game_field)) do
       write_line(
         "Game over! #{Game_Logic.which_players_turn?(current_player)} WON!!! \n#{
@@ -159,29 +174,22 @@ defmodule Server do
     end
   end
 
-  def read_int_from_client(socket),
-      do: read_line(socket)
-          |> String.trim()
-          |> String.to_integer()
+  defp read_int_from_client(socket),
+       do: read_line(socket)
+           |> String.trim()
+           |> String.to_integer()
 
-  def accept(port) do
-    {:ok, socket} =
-      :gen_tcp.listen(port, [:binary, packet: :line, active: false, reuseaddr: true])
-    Logger.info("Accepting connections on port #{port}")
-    loop_acceptor(socket)
-  end
-
-  def loop_acceptor(socket) do
-    {:ok, client} = :gen_tcp.accept(socket)
-    initiate_game(client)
-  end
-
-  def read_line(socket) do
+  defp read_line(socket) do
     {:ok, data} = :gen_tcp.recv(socket, 0)
     data
   end
 
-  def write_line(line, socket) do
+  defp write_to_clients(line, socket_p1, socket_p2) do
+    write_line(line, socket_p1)
+    write_line(line, socket_p2)
+  end
+
+  defp write_line(line, socket) do
     :gen_tcp.send(socket, line)
   end
 end
