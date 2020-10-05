@@ -162,8 +162,10 @@ defmodule Server do
       nil -> player1
       _ ->
         if(elem(current_player, 0) == :player1) do
+          Logger.info("player2")
           player2
         else
+          Logger.info("player1")
           player1
         end
     end
@@ -176,7 +178,7 @@ defmodule Server do
     else
       next_player = which_players_turn?(player1, player2, current_player)
       write_to_clients("#{player_atom_str(next_player)}'s turn! \n", player1, player2)
-      new_turn(game_field, current_player, player1, player2)
+      new_turn(game_field, next_player, player1, player2)
     end
   end
 
