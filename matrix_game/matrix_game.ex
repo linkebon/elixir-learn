@@ -49,14 +49,6 @@ defmodule Game_Logic do
     end
   end
 
-  def which_players_turn?(current_player) do
-    case current_player do
-      "Player 1" -> "Player 2"
-      "Player 2" -> "Player 1"
-      _ -> "Player 1"
-    end
-  end
-
   def generate_game_field(rows, columns),
       do: for(
         row <- 0..(rows - 1),
@@ -128,49 +120,70 @@ defmodule Server do
 
   defp loop_acceptor(socket) do
     {:ok, client1} = :gen_tcp.accept(socket)
+    Logger.info("Player 1 connected")
     {:ok, client2} = :gen_tcp.accept(socket)
+    Logger.info("Player 2 connected")
     initiate_game(client1, client2)
   end
 
   defp initiate_game(socket_p1, socket_p2) do
-    write_to_clients("Welcome to Matrix game!", socket_p1, socket_p2)
+    player1 = {:player1, socket_p1}
+    player2 = {:player2, socket_p2}
+    write_to_clients("Welcome to Matrix game!", player1, player2)
     game_field = Game_Logic.generate_game_field(9, 9)
-    write_line(Game_Logic.game_field_as_string(game_field), socket_p1)
-    new_turn(game_field, socket_p1)
+    write_to_clients(Game_Logic.game_field_as_string(game_field), player1, player2)
+    current_player = which_players_turn?(player1, player2)
+    new_turn(game_field, current_player, player1, player2)
   end
 
-  defp new_turn(game_field, socket_p1, player \\ "none") do
-    current_player = case player do
-      "none" -> Game_Logic.which_players_turn?(player)
-      _ -> player
-    end
-
-    write_line("\n#{current_player}'s turn. \nEnter number to remove: ", socket_p1)
-    remove_val = read_int_from_client(socket_p1)
+  defp new_turn(game_field, current_player, player1, player2) do
+    write_to_clients("\n#{player_atom_str(current_player)}'s turn. ", player1, player2)
+    write_line("Enter number to remove: ", elem(current_player, 1))
+    remove_val = read_int_from_client(elem(current_player, 1))
     new_game_field = Game_Logic.generate_new_game_field(game_field, current_player, remove_val)
-    #write game field to players
-    write_line(Game_Logic.game_field_as_string(new_game_field), socket_p1)
-    game_over?(new_game_field, current_player, socket_p1)
+    write_line(
+      "Other player removed number: #{remove_val}\n\n",
+      elem(other_players_turn(current_player, player1, player2), 1)
+    )
+    write_to_clients(Game_Logic.game_field_as_string(new_game_field), player1, player2)
+    game_over?(new_game_field, current_player, player1, player2)
   end
 
-  defp which_players_turn?(current_player) do
-    #todo
-    current_player
+  defp player_atom_str(player), do: Atom.to_string(elem(player, 0))
+
+  defp other_players_turn(current_player, player1, player2) do
+    case elem(current_player, 0) do
+      :player1 -> player2
+      :player2 -> player1
+    end
   end
 
-  defp game_over?(game_field, current_player, socket_p1) do
+  defp which_players_turn?(player1, player2, current_player \\ nil) do
+    case current_player do
+      nil -> player1
+      _ ->
+        if(elem(current_player, 0) == :player1) do
+          player2
+        else
+          player1
+        end
+    end
+  end
+
+  defp game_over?(game_field, current_player, player1, player2) do
     if(Game_Logic.game_over?(game_field)) do
-      write_line(
-        "Game over! #{Game_Logic.which_players_turn?(current_player)} WON!!! \n#{
+      write_to_clients(
+        "Game over! #{which_players_turn?(player1, player2, current_player)} WON!!! \n#{
           current_player
         } took the last element and therefore lost!",
-        socket_p1
+        player1,
+        player2
       )
     else
-      write_line(Game_Logic.game_field_as_string(game_field), socket_p1)
-      next_player = Game_Logic.which_players_turn?(current_player)
-      write_line("#{next_player}'s turn!", socket_p1)
-      new_turn(game_field, socket_p1, Game_Logic.which_players_turn?(current_player))
+      write_to_clients(Game_Logic.game_field_as_string(game_field), player1, player2)
+      next_player = which_players_turn?(player1, player2, current_player)
+      write_to_clients("#{next_player}'s turn!", player1, player2)
+      new_turn(game_field, current_player, player1, player2)
     end
   end
 
@@ -184,9 +197,9 @@ defmodule Server do
     data
   end
 
-  defp write_to_clients(line, socket_p1, socket_p2) do
-    write_line(line, socket_p1)
-    write_line(line, socket_p2)
+  defp write_to_clients(line, player1, player2) do
+    write_line(line, elem(player1, 1))
+    write_line(line, elem(player2, 1))
   end
 
   defp write_line(line, socket) do
