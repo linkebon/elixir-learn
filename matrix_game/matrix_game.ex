@@ -16,7 +16,7 @@
 #81 82 83 84 85 86 87 88 89
 #91 92 93 94 95 96 97 98 99
 #---------------
-defmodule MatrixGame do
+defmodule Game_Logic do
   def start() do
     rows = IO.gets("Rows[Max 9]: ")
            |> String.trim()
@@ -37,6 +37,7 @@ defmodule MatrixGame do
     next_turn(game_field, current_player)
   end
 
+  #old
   def next_turn(game_field, current_player) do
     remove_val = read_remove_val(game_field)
     new_game_field =
@@ -54,7 +55,11 @@ defmodule MatrixGame do
         end
       )
     if(game_over?(new_game_field)) do
-      IO.puts("Game over! #{which_players_turn?(current_player)} WON!!! \n#{current_player} took the last element and therefore lost!")
+      IO.puts(
+        "Game over! #{which_players_turn?(current_player)} WON!!! \n#{
+          current_player
+        } took the last element and therefore lost!"
+      )
     else
       print_game_field(new_game_field)
       next_player = which_players_turn?(current_player)
@@ -62,6 +67,21 @@ defmodule MatrixGame do
       next_turn(new_game_field, which_players_turn?(current_player))
     end
   end
+
+  def generate_new_game_field(game_field, current_player, remove_val), do:
+    Enum.map(
+      game_field,
+      fn row -> Enum.map(
+                  row,
+                  fn current_val -> if(should_value_be_removed?(current_val, remove_val)) do
+                                      -1
+                                    else
+                                      current_val
+                                    end
+                  end
+                )
+      end
+    )
 
   def read_remove_val(game_field) do
     case IO.gets("Print number to remove: ")
@@ -110,6 +130,18 @@ defmodule MatrixGame do
     IO.puts("---------------")
   end
 
+  def game_field_as_string(game_field) do
+    game_field_str = Enum.map(
+                       game_field,
+                       fn (row) ->
+                         Enum.join(row, " ")
+                         |> String.replace("-1", " ")
+                       end
+                     )
+                     |> Enum.join("\n")
+    "\nGame field \n---------------\n" <> game_field_str <> "\n---------------\n"
+  end
+
   def should_value_be_removed?(current_val, remove_val) do
     current_val_row = getRow(current_val)
     current_val_col = getCol(current_val)
@@ -143,4 +175,75 @@ defmodule MatrixGame do
   def getRow(val), do: div(val, 10) - 1
 
   def getCol(val), do: rem(val, 10)
+end
+
+# https://elixir-lang.org/getting-started/mix-otp/task-and-gen-tcp.html
+defmodule Server do
+  require Logger
+
+  def initiate_game(socket_p1) do
+    write_line("Rows[Max 9]: ", socket_p1)
+    rows = read_int_from_client(socket_p1)
+    write_line("Columns[Max 9]: ", socket_p1)
+    columns = read_int_from_client(socket_p1)
+    game_field = Game_Logic.generate_game_field(rows, columns)
+    write_line(Game_Logic.game_field_as_string(game_field), socket_p1)
+    new_turn(game_field, socket_p1)
+  end
+
+  def new_turn(game_field, socket_p1, player \\ "none") do
+    current_player = case player do
+      "none" -> Game_Logic.which_players_turn?(player)
+      _ -> player
+    end
+
+    write_line("\n#{current_player}'s turn. \nEnter number to remove: ", socket_p1)
+    remove_val = read_int_from_client(socket_p1)
+    new_game_field = Game_Logic.generate_new_game_field(game_field, current_player, remove_val)
+    #write game field to players
+    write_line(Game_Logic.game_field_as_string(new_game_field), socket_p1)
+    game_over?(new_game_field, current_player, socket_p1)
+  end
+
+  def game_over?(game_field, current_player, socket_p1) do
+    if(Game_Logic.game_over?(game_field)) do
+      write_line(
+        "Game over! #{Game_Logic.which_players_turn?(current_player)} WON!!! \n#{
+          current_player
+        } took the last element and therefore lost!",
+        socket_p1
+      )
+    else
+      write_line(Game_Logic.game_field_as_string(game_field), socket_p1)
+      next_player = Game_Logic.which_players_turn?(current_player)
+      write_line("#{next_player}'s turn!", socket_p1)
+      new_turn(game_field, socket_p1, Game_Logic.which_players_turn?(current_player))
+    end
+  end
+
+  def read_int_from_client(socket),
+      do: read_line(socket)
+          |> String.trim()
+          |> String.to_integer()
+
+  def accept(port) do
+    {:ok, socket} =
+      :gen_tcp.listen(port, [:binary, packet: :line, active: false, reuseaddr: true])
+    Logger.info("Accepting connections on port #{port}")
+    loop_acceptor(socket)
+  end
+
+  def loop_acceptor(socket) do
+    {:ok, client} = :gen_tcp.accept(socket)
+    initiate_game(client)
+  end
+
+  def read_line(socket) do
+    {:ok, data} = :gen_tcp.recv(socket, 0)
+    data
+  end
+
+  def write_line(line, socket) do
+    :gen_tcp.send(socket, line)
+  end
 end
