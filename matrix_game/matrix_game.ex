@@ -17,57 +17,6 @@
 #91 92 93 94 95 96 97 98 99
 #---------------
 defmodule Game_Logic do
-  def start() do
-    rows = IO.gets("Rows[Max 9]: ")
-           |> String.trim()
-           |> String.to_integer()
-
-    columns = IO.gets("Columns[Max 9]: ")
-              |> String.trim()
-              |> String.to_integer()
-
-    if(rows > 9 || columns > 9) do
-      IO.puts("Max 9 rows and max 9 columns")
-      start()
-    end
-    game_field = generate_game_field(rows, columns)
-    print_game_field(game_field)
-    current_player = which_players_turn?("none")
-    IO.puts("#{current_player} starts")
-    next_turn(game_field, current_player)
-  end
-
-  #old
-  def next_turn(game_field, current_player) do
-    remove_val = read_remove_val(game_field)
-    new_game_field =
-      Enum.map(
-        game_field,
-        fn row -> Enum.map(
-                    row,
-                    fn current_val -> if(should_value_be_removed?(current_val, remove_val)) do
-                                        -1
-                                      else
-                                        current_val
-                                      end
-                    end
-                  )
-        end
-      )
-    if(game_over?(new_game_field)) do
-      IO.puts(
-        "Game over! #{which_players_turn?(current_player)} WON!!! \n#{
-          current_player
-        } took the last element and therefore lost!"
-      )
-    else
-      print_game_field(new_game_field)
-      next_player = which_players_turn?(current_player)
-      IO.puts("#{next_player}'s turn!")
-      next_turn(new_game_field, which_players_turn?(current_player))
-    end
-  end
-
   def generate_new_game_field(game_field, current_player, remove_val), do:
     Enum.map(
       game_field,
@@ -100,10 +49,6 @@ defmodule Game_Logic do
     end
   end
 
-  def number_exist_in_game_field?(game_field, number),
-      do: game_field
-          |> Enum.any?(fn row -> number in row end)
-
   def which_players_turn?(current_player) do
     case current_player do
       "Player 1" -> "Player 2"
@@ -118,17 +63,16 @@ defmodule Game_Logic do
         do: Enum.to_list(first_value_in_row(row)..last_value_in_row(row, columns))
       )
 
-  def print_game_field(game_field) do
-    IO.puts("\nGame field \n---------------")
-    Enum.each(
-      game_field,
-      fn (row) -> Enum.join(row, " ")
-                  |> String.replace("-1", " ")
-                  |> IO.puts()
-      end
-    )
-    IO.puts("---------------")
-  end
+  def game_over?(game_field),
+      do: Enum.all?(
+        game_field,
+        fn row ->
+          Enum.all?(
+            row,
+            fn val -> val == -1 end
+          )
+        end
+      )
 
   def game_field_as_string(game_field) do
     game_field_str = Enum.map(
@@ -142,7 +86,11 @@ defmodule Game_Logic do
     "\nGame field \n---------------\n" <> game_field_str <> "\n---------------\n"
   end
 
-  def should_value_be_removed?(current_val, remove_val) do
+  defp number_exist_in_game_field?(game_field, number),
+       do: game_field
+           |> Enum.any?(fn row -> number in row end)
+
+  defp should_value_be_removed?(current_val, remove_val) do
     current_val_row = getRow(current_val)
     current_val_col = getCol(current_val)
     remove_val_row = getRow(remove_val)
@@ -157,24 +105,14 @@ defmodule Game_Logic do
     end
   end
 
-  def game_over?(game_field),
-      do: Enum.all?(
-        game_field,
-        fn row ->
-          Enum.all?(
-            row,
-            fn val -> val == -1 end
-          )
-        end
-      )
+  defp first_value_in_row(n), do: ((n + 1) * 10) + 1
 
-  def first_value_in_row(n), do: ((n + 1) * 10) + 1
+  defp last_value_in_row(current_row, columns), do: first_value_in_row(current_row) + columns - 1
 
-  def last_value_in_row(current_row, columns), do: first_value_in_row(current_row) + columns - 1
+  defp getRow(val), do: div(val, 10) - 1
 
-  def getRow(val), do: div(val, 10) - 1
+  defp getCol(val), do: rem(val, 10)
 
-  def getCol(val), do: rem(val, 10)
 end
 
 # https://elixir-lang.org/getting-started/mix-otp/task-and-gen-tcp.html
