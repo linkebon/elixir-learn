@@ -16,21 +16,81 @@
 #81 82 83 84 85 86 87 88 89
 #91 92 93 94 95 96 97 98 99
 #---------------
-defmodule Game_Logic do
-  def generate_new_game_field(game_field, remove_val), do:
-    Enum.map(
-      game_field,
-      fn row -> Enum.map(
-                  row,
-                  fn current_val -> if(should_value_be_removed?(current_val, remove_val)) do
-                                      -1
-                                    else
-                                      current_val
-                                    end
-                  end
-                )
-      end
-    )
+defmodule MatrixGame do
+  def start() do
+    rows = IO.gets("Rows[Max 9]: ")
+           |> String.trim()
+           |> String.to_integer()
+
+    columns = IO.gets("Columns[Max 9]: ")
+              |> String.trim()
+              |> String.to_integer()
+
+    if(rows > 9 || columns > 9) do
+      IO.puts("Max 9 rows and max 9 columns")
+      start()
+    end
+    game_field = generate_game_field(rows, columns)
+    print_game_field(game_field)
+    current_player = which_players_turn?("none")
+    IO.puts("#{current_player} starts")
+    next_turn(game_field, current_player)
+  end
+
+  def next_turn(game_field, current_player) do
+    remove_val = read_remove_val(game_field)
+    new_game_field =
+      Enum.map(
+        game_field,
+        fn row -> Enum.map(
+                    row,
+                    fn current_val -> if(should_value_be_removed?(current_val, remove_val)) do
+                                        -1
+                                      else
+                                        current_val
+                                      end
+                    end
+                  )
+        end
+      )
+    if(game_over?(new_game_field)) do
+      IO.puts("Game over! #{which_players_turn?(current_player)} WON!!! \n#{current_player} took the last element and therefore lost!")
+    else
+      print_game_field(new_game_field)
+      next_player = which_players_turn?(current_player)
+      IO.puts("#{next_player}'s turn!")
+      next_turn(new_game_field, which_players_turn?(current_player))
+    end
+  end
+
+  def read_remove_val(game_field) do
+    case IO.gets("Print number to remove: ")
+         |> String.trim()
+         |> Integer.parse() do
+      {parsed, _} ->
+        if(number_exist_in_game_field?(game_field, parsed)) do
+          parsed
+        else
+          IO.puts("Number did not exist in game field.. Try again \n")
+          read_remove_val(game_field)
+        end
+      :error ->
+        IO.puts("You did not provide a number.. Try again \n")
+        read_remove_val(game_field)
+    end
+  end
+
+  def number_exist_in_game_field?(game_field, number),
+      do: game_field
+          |> Enum.any?(fn row -> number in row end)
+
+  def which_players_turn?(current_player) do
+    case current_player do
+      "Player 1" -> "Player 2"
+      "Player 2" -> "Player 1"
+      _ -> "Player 1"
+    end
+  end
 
   def generate_game_field(rows, columns),
       do: for(
@@ -38,34 +98,19 @@ defmodule Game_Logic do
         do: Enum.to_list(first_value_in_row(row)..last_value_in_row(row, columns))
       )
 
-  def game_over?(game_field),
-      do: Enum.all?(
-        game_field,
-        fn row ->
-          Enum.all?(
-            row,
-            fn val -> val == -1 end
-          )
-        end
-      )
-
-  def game_field_as_string(game_field) do
-    game_field_str = Enum.map(
-                       game_field,
-                       fn (row) ->
-                         Enum.join(row, " ")
-                         |> String.replace("-1", " ")
-                       end
-                     )
-                     |> Enum.join("\n")
-    "\nGame field \n---------------\n" <> game_field_str <> "\n---------------\n"
+  def print_game_field(game_field) do
+    IO.puts("\nGame field \n---------------")
+    Enum.each(
+      game_field,
+      fn (row) -> Enum.join(row, " ")
+                  |> String.replace("-1", " ")
+                  |> IO.puts()
+      end
+    )
+    IO.puts("---------------")
   end
 
-  def number_exist_in_game_field?(game_field, number),
-       do: game_field
-           |> Enum.any?(fn row -> number in row end)
-
-  defp should_value_be_removed?(current_val, remove_val) do
+  def should_value_be_removed?(current_val, remove_val) do
     current_val_row = getRow(current_val)
     current_val_col = getCol(current_val)
     remove_val_row = getRow(remove_val)
@@ -80,130 +125,22 @@ defmodule Game_Logic do
     end
   end
 
-  defp first_value_in_row(n), do: ((n + 1) * 10) + 1
-
-  defp last_value_in_row(current_row, columns), do: first_value_in_row(current_row) + columns - 1
-
-  defp getRow(val), do: div(val, 10) - 1
-
-  defp getCol(val), do: rem(val, 10)
-
-end
-
-# https://elixir-lang.org/getting-started/mix-otp/task-and-gen-tcp.html
-defmodule Server do
-  require Logger
-
-  def accept(port_player1, port_player2) do
-    {:ok, socket_p1} =
-      :gen_tcp.listen(port_player1, [:binary, packet: :line, active: false, reuseaddr: true])
-    Logger.info("Accepting connections on port #{port_player1}")
-    {:ok, socket_p2} =
-      :gen_tcp.listen(port_player2, [:binary, packet: :line, active: false, reuseaddr: true])
-    Logger.info("Accepting connections on port #{port_player2}")
-    loop_acceptor(socket_p1, socket_p2)
-  end
-
-  defp loop_acceptor(socket_p1, socket_p2) do
-    {:ok, client1} = :gen_tcp.accept(socket_p1)
-    Logger.info("Player 1 connected")
-    write_line("Welcome! Waiting for another player..", client1)
-    {:ok, client2} = :gen_tcp.accept(socket_p2)
-    Logger.info("Player 2 connected")
-    initiate_game(client1, client2)
-  end
-
-  defp initiate_game(socket_p1, socket_p2) do
-    player1 = {:player1, socket_p1}
-    player2 = {:player2, socket_p2}
-    write_to_clients("\n\nWelcome to Matrix game!", player1, player2)
-    game_field = Game_Logic.generate_game_field(9, 9)
-    write_to_clients(Game_Logic.game_field_as_string(game_field), player1, player2)
-    current_player = which_players_turn?(player1, player2)
-    new_turn(game_field, current_player, player1, player2)
-  end
-
-  defp new_turn(game_field, current_player, player1, player2) do
-    other_player = other_players_turn(current_player, player1, player2)
-    write_line("\nIt's your turn\n", elem(current_player, 1))
-    write_line("\nOther players turn.. Please wait", elem(other_player, 1))
-    remove_val = number_exist_in_game_field?(game_field, current_player)
-
-    write_line(
-      "Other player removed number: #{remove_val}\n\n",
-      elem(other_player, 1)
-    )
-    new_game_field = Game_Logic.generate_new_game_field(game_field, remove_val)
-    write_to_clients(Game_Logic.game_field_as_string(new_game_field), player1, player2)
-    game_over?(new_game_field, current_player, player1, player2)
-  end
-
-  defp number_exist_in_game_field?(game_field, player) do
-    write_line("Enter number to remove: ", elem(player, 1))
-    remove_val = read_int_from_client(elem(player, 1))
-    if(Game_Logic.number_exist_in_game_field?(game_field, remove_val)) do
-      remove_val
-    else
-      number_exist_in_game_field?(game_field, player)
-    end
-  end
-
-  defp player_atom_str(player), do: Atom.to_string(elem(player, 0))
-
-  defp other_players_turn(current_player, player1, player2) do
-    case elem(current_player, 0) do
-      :player1 -> player2
-      :player2 -> player1
-    end
-  end
-
-  defp which_players_turn?(player1, player2, current_player \\ nil) do
-    case current_player do
-      nil -> player1
-      _ ->
-        if(elem(current_player, 0) == :player1) do
-          Logger.info("player2")
-          player2
-        else
-          Logger.info("player1")
-          player1
+  def game_over?(game_field),
+      do: Enum.all?(
+        game_field,
+        fn row ->
+          Enum.all?(
+            row,
+            fn val -> val == -1 end
+          )
         end
-    end
-  end
+      )
 
-  defp game_over?(game_field, current_player, player1, player2) do
-    if(Game_Logic.game_over?(game_field)) do
-      write_line("You won!!! Congratulations!", elem(other_players_turn(current_player, player1, player2), 1))
-      write_line("You lost.. You took the last element and therefore you lost!", elem(current_player, 1))
-    else
-      next_player = which_players_turn?(player1, player2, current_player)
-      write_to_clients("#{player_atom_str(next_player)}'s turn! \n", player1, player2)
-      new_turn(game_field, next_player, player1, player2)
-    end
-  end
+  def first_value_in_row(n), do: ((n + 1) * 10) + 1
 
-  def read_int_from_client(socket) do
-    case read_line(socket)
-         |> String.trim()
-         |> Integer.parse() do
-      {parsed, _} -> parsed
-      :error ->
-        write_line("\nInvalid number provided.. Try again \n", socket)
-        read_int_from_client(socket)
-    end
-  end
+  def last_value_in_row(current_row, columns), do: first_value_in_row(current_row) + columns - 1
 
-  defp read_line(socket) do
-    {:ok, data} = :gen_tcp.recv(socket, 0)
-    data
-  end
+  def getRow(val), do: div(val, 10) - 1
 
-  defp write_to_clients(line, player1, player2) do
-    write_line(line, elem(player1, 1))
-    write_line(line, elem(player2, 1))
-  end
-
-  defp write_line(line, socket) do
-    :gen_tcp.send(socket, line)
-  end
+  def getCol(val), do: rem(val, 10)
 end
