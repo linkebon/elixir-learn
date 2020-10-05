@@ -17,7 +17,7 @@
 #91 92 93 94 95 96 97 98 99
 #---------------
 defmodule Game_Logic do
-  def generate_new_game_field(game_field, current_player, remove_val), do:
+  def generate_new_game_field(game_field, remove_val), do:
     Enum.map(
       game_field,
       fn row -> Enum.map(
@@ -31,23 +31,6 @@ defmodule Game_Logic do
                 )
       end
     )
-
-  def read_remove_val(game_field) do
-    case IO.gets("Print number to remove: ")
-         |> String.trim()
-         |> Integer.parse() do
-      {parsed, _} ->
-        if(number_exist_in_game_field?(game_field, parsed)) do
-          parsed
-        else
-          IO.puts("Number did not exist in game field.. Try again \n")
-          read_remove_val(game_field)
-        end
-      :error ->
-        IO.puts("You did not provide a number.. Try again \n")
-        read_remove_val(game_field)
-    end
-  end
 
   def generate_game_field(rows, columns),
       do: for(
@@ -78,7 +61,7 @@ defmodule Game_Logic do
     "\nGame field \n---------------\n" <> game_field_str <> "\n---------------\n"
   end
 
-  defp number_exist_in_game_field?(game_field, number),
+  def number_exist_in_game_field?(game_field, number),
        do: game_field
            |> Enum.any?(fn row -> number in row end)
 
@@ -141,17 +124,28 @@ defmodule Server do
   end
 
   defp new_turn(game_field, current_player, player1, player2) do
-    write_to_clients("\n#{player_atom_str(current_player)}'s turn. ", player1, player2)
-    write_line("Please wait.... \n", elem(other_players_turn(current_player, player1, player2), 1))
-    write_line("Enter number to remove: ", elem(current_player, 1))
-    remove_val = read_int_from_client(elem(current_player, 1))
-    new_game_field = Game_Logic.generate_new_game_field(game_field, current_player, remove_val)
+    other_player = other_players_turn(current_player, player1, player2)
+    write_line("\nIt's your turn\n", elem(current_player, 1))
+    write_line("\nOther players turn.. Please wait", elem(other_player, 1))
+    remove_val = number_exist_in_game_field?(game_field, current_player)
+
     write_line(
       "Other player removed number: #{remove_val}\n\n",
-      elem(other_players_turn(current_player, player1, player2), 1)
+      elem(other_player, 1)
     )
+    new_game_field = Game_Logic.generate_new_game_field(game_field, remove_val)
     write_to_clients(Game_Logic.game_field_as_string(new_game_field), player1, player2)
     game_over?(new_game_field, current_player, player1, player2)
+  end
+
+  defp number_exist_in_game_field?(game_field, player) do
+    write_line("Enter number to remove: ", elem(player, 1))
+    remove_val = read_int_from_client(elem(player, 1))
+    if(Game_Logic.number_exist_in_game_field?(game_field, remove_val)) do
+      remove_val
+    else
+      number_exist_in_game_field?(game_field, player)
+    end
   end
 
   defp player_atom_str(player), do: Atom.to_string(elem(player, 0))
@@ -180,17 +174,22 @@ defmodule Server do
       write_line("You won!!! Congratulations!", elem(other_players_turn(current_player, player1, player2), 1))
       write_line("You lost.. You took the last element and therefore you lost!", elem(current_player, 1))
     else
-      write_to_clients(Game_Logic.game_field_as_string(game_field), player1, player2)
       next_player = which_players_turn?(player1, player2, current_player)
       write_to_clients("#{player_atom_str(next_player)}'s turn! \n", player1, player2)
       new_turn(game_field, current_player, player1, player2)
     end
   end
 
-  defp read_int_from_client(socket),
-       do: read_line(socket)
-           |> String.trim()
-           |> String.to_integer()
+  def read_int_from_client(socket) do
+    case read_line(socket)
+         |> String.trim()
+         |> Integer.parse() do
+      {parsed, _} -> parsed
+      :error ->
+        write_line("\nInvalid number provided.. Try again \n", socket)
+        read_int_from_client(socket)
+    end
+  end
 
   defp read_line(socket) do
     {:ok, data} = :gen_tcp.recv(socket, 0)
