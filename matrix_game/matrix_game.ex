@@ -111,17 +111,21 @@ end
 defmodule Server do
   require Logger
 
-  def accept(port) do
-    {:ok, socket} =
-      :gen_tcp.listen(port, [:binary, packet: :line, active: false, reuseaddr: true])
-    Logger.info("Accepting connections on port #{port}")
-    loop_acceptor(socket)
+  def accept(port_player1, port_player2) do
+    {:ok, socket_p1} =
+      :gen_tcp.listen(port_player1, [:binary, packet: :line, active: false, reuseaddr: true])
+    Logger.info("Accepting connections on port #{port_player1}")
+    {:ok, socket_p2} =
+      :gen_tcp.listen(port_player2, [:binary, packet: :line, active: false, reuseaddr: true])
+    Logger.info("Accepting connections on port #{port_player2}")
+    loop_acceptor(socket_p1, socket_p2)
   end
 
-  defp loop_acceptor(socket) do
-    {:ok, client1} = :gen_tcp.accept(socket)
+  defp loop_acceptor(socket_p1, socket_p2) do
+    {:ok, client1} = :gen_tcp.accept(socket_p1)
     Logger.info("Player 1 connected")
-    {:ok, client2} = :gen_tcp.accept(socket)
+    write_line("Welcome! Waiting for another player..", client1)
+    {:ok, client2} = :gen_tcp.accept(socket_p2)
     Logger.info("Player 2 connected")
     initiate_game(client1, client2)
   end
@@ -129,7 +133,7 @@ defmodule Server do
   defp initiate_game(socket_p1, socket_p2) do
     player1 = {:player1, socket_p1}
     player2 = {:player2, socket_p2}
-    write_to_clients("Welcome to Matrix game!", player1, player2)
+    write_to_clients("\n\nWelcome to Matrix game!", player1, player2)
     game_field = Game_Logic.generate_game_field(9, 9)
     write_to_clients(Game_Logic.game_field_as_string(game_field), player1, player2)
     current_player = which_players_turn?(player1, player2)
@@ -138,6 +142,7 @@ defmodule Server do
 
   defp new_turn(game_field, current_player, player1, player2) do
     write_to_clients("\n#{player_atom_str(current_player)}'s turn. ", player1, player2)
+    write_line("Please wait.... \n", elem(other_players_turn(current_player, player1, player2), 1))
     write_line("Enter number to remove: ", elem(current_player, 1))
     remove_val = read_int_from_client(elem(current_player, 1))
     new_game_field = Game_Logic.generate_new_game_field(game_field, current_player, remove_val)
@@ -172,17 +177,12 @@ defmodule Server do
 
   defp game_over?(game_field, current_player, player1, player2) do
     if(Game_Logic.game_over?(game_field)) do
-      write_to_clients(
-        "Game over! #{which_players_turn?(player1, player2, current_player)} WON!!! \n#{
-          current_player
-        } took the last element and therefore lost!",
-        player1,
-        player2
-      )
+      write_line("You won!!! Congratulations!", elem(other_players_turn(current_player, player1, player2), 1))
+      write_line("You lost.. You took the last element and therefore you lost!", elem(current_player, 1))
     else
       write_to_clients(Game_Logic.game_field_as_string(game_field), player1, player2)
       next_player = which_players_turn?(player1, player2, current_player)
-      write_to_clients("#{next_player}'s turn!", player1, player2)
+      write_to_clients("#{player_atom_str(next_player)}'s turn! \n", player1, player2)
       new_turn(game_field, current_player, player1, player2)
     end
   end
